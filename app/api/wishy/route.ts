@@ -1,72 +1,120 @@
-import OpenAI from "openai";
 import { NextResponse } from "next/server";
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
+type SearchType = "restaurant" | "hotel" | "shop";
+
+type OverpassElement = {
+  id: number;
+  lat?: number;
+  lon?: number;
+  center?: {
+    lat: number;
+    lon: number;
+  };
+  tags?: {
+    name?: string;
+    amenity?: string;
+    tourism?: string;
+    shop?: string;
+    cuisine?: string;
+  };
+};
 
 export async function POST(request: Request) {
   try {
-    const { text } = await request.json();
+    const { latitude, longitude, type } = await request.json();
 
-    if (!text) {
+    if (!latitude || !longitude) {
       return NextResponse.json(
-        { error: "Text is required" },
+        { error: "Latitude and longitude are required" },
         { status: 400 }
       );
     }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4.1-mini",
-      messages: [
-        {
-          role: "system",
-          content: `
-You are Wishy, an AI intent router for My Wish app.
+    const searchType: SearchType = type || "restaurant";
 
-Return ONLY valid JSON.
+    let overpassQuery = "";
 
-Available categories:
-Food, Taxi, Shopping, Gifts, Hotels, Ask Wishy
+    if (searchType === "hotel") {
+      overpassQuery = `
+        [out:json][timeout:25];
+        (
+          node["tourism"~"hotel|hostel|guest_house|apartment"](around:5000,${latitude},${longitude});
+          way["tourism"~"hotel|hostel|guest_house|apartment"](around:5000,${latitude},${longitude});
+          relation["tourism"~"hotel|hostel|guest_house|apartment"](around:5000,${latitude},${longitude});
+        );
+        out center 20;
+      `;
+    }
 
-Available action types:
-Food: 🚚 Delivery, 🍽 Restaurant, 🥡 Takeaway
-Taxi: ⚡ Ride now, ✈️ Airport, 📅 Schedule ride
-Shopping: 🌐 Buy online, 📍 Nearby store, 💸 Compare prices
-Gifts: ❤️ Romantic, 👩 For woman, 👨 For man, 👶 For child
-Hotels: 🌙 Tonight, 🏖 Weekend, 💶 Cheap, ✨ Luxury
+    if (searchType === "shop") {
+      overpassQuery = `
+        [out:json][timeout:25];
+        (
+          node["shop"](around:3000,${latitude},${longitude});
+          way["shop"](around:3000,${latitude},${longitude});
+          relation["shop"](around:3000,${latitude},${longitude});
+        );
+        out center 20;
+      `;
+    }
 
-Important:
-If user asks for food like sushi, pizza, burger, restaurant, cafe:
-- If delivery is clear, choose 🚚 Delivery
-- If restaurant/dine-in/nearby is clear, choose 🍽 Restaurant
-- If unclear, return action_type null so app asks user to choose.
+    if (searchType === "restaurant") {
+      overpassQuery = `
+        [out:json][timeout:25];
+        (
+          node["amenity"~"restaurant|cafe|fast_food"](around:3000,${latitude},${longitude});
+          way["amenity"~"restaurant|cafe|fast_food"](around:3000,${latitude},${longitude});
+          relation["amenity"~"restaurant|cafe|fast_food"](around:3000,${latitude},${longitude});
+        );
+        out center 20;
+      `;
+    }
 
-JSON format:
-{
-  "category": "Food",
-  "action_type": null,
-  "confidence": 0.9
-}
-          `,
-        },
-        {
-          role: "user",
-          content: text,
-        },
-      ],
-      temperature: 0,
+    const response = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        "User-Agent": "MyWishApp/1.0",
+      },
+      body: `data=${encodeURIComponent(overpassQuery)}`,
     });
 
-    const content = response.choices[0]?.message?.content || "{}";
-    const parsed = JSON.parse(content);
+    const data = await response.json();
 
-    return NextResponse.json(parsed);
+    const places = (data.elements || [])
+      .map((item: OverpassElement) => {
+        const lat = item.lat || item.center?.lat;
+        const lon = item.lon || item.center?.lon;
+
+        return {
+          id: item.id,
+          name: item.tags?.name || "Unnamed place",
+          type:
+            item.tags?.tourism ||
+            item.tags?.shop ||
+            item.tags?.amenity ||
+            searchType,
+          cuisine: item.tags?.cuisine || null,
+          latitude: lat,
+          longitude: lon,
+          mapsUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`,
+        };
+      })
+      .filter(
+        (place: { latitude?: number; longitude?: number }) =>
+          place.latitude && place.longitude
+      )
+      .slice(0, 10);
+
+    return NextResponse.json({
+      type: searchType,
+      places,
+    });
   } catch (error) {
-    console.error("Wishy API error:", error);
+    console.error("Nearby API error:", error);
 
     return NextResponse.json(
-      { error: "Wishy failed to understand the request" },
+      { error: "Nearby search failed" },
       { status: 500 }
     );
   }
