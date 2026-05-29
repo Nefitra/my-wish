@@ -361,6 +361,52 @@ export default function Home() {
     setNearbyPlaces([]);
   };
 
+  const openRecommendation = async (title: string) => {
+    const text = title.toLowerCase();
+
+    setConciergeCategory(null);
+    setRecommendations([]);
+
+    await trackEvent("recommendation_clicked", conciergeCategory || "concierge", title);
+
+    if (text.includes("restaurant") || text.includes("coffee")) {
+      openCard("Food", "🍽 Restaurant");
+      return;
+    }
+
+    if (text.includes("hotel")) {
+      openCard("Hotels", "🌙 Tonight");
+      return;
+    }
+
+    if (text.includes("taxi")) {
+      if (text.includes("airport")) {
+        openCard("Taxi", "✈️ Airport");
+        return;
+      }
+
+      openCard("Taxi", "⚡ Ride now");
+      return;
+    }
+
+    if (text.includes("flowers")) {
+      openCard("Gifts", "❤️ Romantic");
+      return;
+    }
+
+    if (text.includes("kids")) {
+      openCard("Gifts", "👶 For child");
+      return;
+    }
+
+    if (text.includes("shopping")) {
+      openCard("Shopping", "🌐 Buy online");
+      return;
+    }
+
+    openCard("Ask Wishy", "Ask anything");
+  };
+
   const detectIntent = async () => {
     const text = wishText.toLowerCase().trim();
 
@@ -557,9 +603,10 @@ export default function Home() {
 
             <div className="space-y-3">
               {recommendations.map((item) => (
-                <div
+                <button
                   key={item.id}
-                  className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
+                  onClick={() => openRecommendation(item.title)}
+                  className="w-full text-left bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4 hover:border-violet-500 transition"
                 >
                   <div className="flex gap-3 items-start">
                     <div className="text-3xl">{item.emoji}</div>
@@ -569,7 +616,7 @@ export default function Home() {
                       <p className="text-gray-400 text-sm mt-1">{item.description}</p>
                     </div>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
 
