@@ -39,11 +39,18 @@ type NearbyPlace = {
   mapsUrl: string;
 };
 
+type RecentWish = {
+  id: number;
+  wish_text: string;
+  category: string | null;
+};
+
 export default function Home() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
+  const [recentWishes, setRecentWishes] = useState<RecentWish[]>([]);
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
   const [nearbyLoading, setNearbyLoading] = useState(false);
@@ -51,43 +58,22 @@ export default function Home() {
   const [locationReady, setLocationReady] = useState(false);
 
   const cards: Card[] = [
-    {
-      emoji: "🍔",
-      title: "Food",
-      subtitle: "Delivery or restaurant",
-      options: ["🚚 Delivery", "🍽 Restaurant", "🥡 Takeaway"],
-    },
-    {
-      emoji: "🚕",
-      title: "Taxi",
-      subtitle: "Ride anywhere",
-      options: ["⚡ Ride now", "✈️ Airport", "📅 Schedule ride"],
-    },
-    {
-      emoji: "🛍",
-      title: "Shopping",
-      subtitle: "Buy online or nearby",
-      options: ["🌐 Buy online", "📍 Nearby store", "💸 Compare prices"],
-    },
-    {
-      emoji: "🎁",
-      title: "Gifts",
-      subtitle: "Find perfect ideas",
-      options: ["❤️ Romantic", "👩 For woman", "👨 For man", "👶 For child"],
-    },
-    {
-      emoji: "🏨",
-      title: "Hotels",
-      subtitle: "Stay tonight",
-      options: ["🌙 Tonight", "🏖 Weekend", "💶 Cheap", "✨ Luxury"],
-    },
-    {
-      emoji: "💬",
-      title: "Ask Wishy",
-      subtitle: "AI instant help",
-      options: ["Ask anything"],
-    },
+    { emoji: "🍔", title: "Food", subtitle: "Delivery or restaurant", options: ["🚚 Delivery", "🍽 Restaurant", "🥡 Takeaway"] },
+    { emoji: "🚕", title: "Taxi", subtitle: "Ride anywhere", options: ["⚡ Ride now", "✈️ Airport", "📅 Schedule ride"] },
+    { emoji: "🛍", title: "Shopping", subtitle: "Buy online or nearby", options: ["🌐 Buy online", "📍 Nearby store", "💸 Compare prices"] },
+    { emoji: "🎁", title: "Gifts", subtitle: "Find perfect ideas", options: ["❤️ Romantic", "👩 For woman", "👨 For man", "👶 For child"] },
+    { emoji: "🏨", title: "Hotels", subtitle: "Stay tonight", options: ["🌙 Tonight", "🏖 Weekend", "💶 Cheap", "✨ Luxury"] },
+    { emoji: "💬", title: "Ask Wishy", subtitle: "AI instant help", options: ["Ask anything"] },
   ];
+
+  const getSessionId = () => {
+    const existing = localStorage.getItem("wishy_session_id");
+    if (existing) return existing;
+
+    const sessionId = crypto.randomUUID();
+    localStorage.setItem("wishy_session_id", sessionId);
+    return sessionId;
+  };
 
   const trackEvent = async (
     eventType: string,
@@ -109,6 +95,44 @@ export default function Home() {
     }
   };
 
+  const saveWish = async (wish: string, category?: string) => {
+    try {
+      const sessionId = getSessionId();
+
+      await supabase.from("user_wishes").insert({
+        session_id: sessionId,
+        wish_text: wish,
+        category: category || null,
+      });
+
+      await loadRecentWishes();
+    } catch (error) {
+      console.error("Wish save error:", error);
+    }
+  };
+
+  const loadRecentWishes = async () => {
+    try {
+      const sessionId = getSessionId();
+
+      const { data, error } = await supabase
+        .from("user_wishes")
+        .select("id, wish_text, category")
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error("Recent wishes error:", error);
+        return;
+      }
+
+      setRecentWishes(data || []);
+    } catch (error) {
+      console.error("Recent wishes load error:", error);
+    }
+  };
+
   const requestLocation = () => {
     if (!navigator.geolocation) {
       alert("Geolocation is not supported on this device");
@@ -119,10 +143,8 @@ export default function Home() {
       async (position) => {
         const latitude = position.coords.latitude;
         const longitude = position.coords.longitude;
-        const sessionId =
-          localStorage.getItem("wishy_session_id") || crypto.randomUUID();
+        const sessionId = getSessionId();
 
-        localStorage.setItem("wishy_session_id", sessionId);
         localStorage.setItem("wishy_lat", latitude.toString());
         localStorage.setItem("wishy_lng", longitude.toString());
 
@@ -132,13 +154,7 @@ export default function Home() {
           longitude,
         });
 
-        await trackEvent(
-          "location_connected",
-          undefined,
-          undefined,
-          undefined,
-          `${latitude},${longitude}`
-        );
+        await trackEvent("location_connected", undefined, undefined, undefined, `${latitude},${longitude}`);
 
         setLocationReady(true);
         alert("Location connected 📍");
@@ -154,9 +170,9 @@ export default function Home() {
     const savedLat = localStorage.getItem("wishy_lat");
     const savedLng = localStorage.getItem("wishy_lng");
 
-    if (savedLat && savedLng) {
-      setLocationReady(true);
-    }
+    if (savedLat && savedLng) setLocationReady(true);
+
+    loadRecentWishes();
   }, []);
 
   useEffect(() => {
@@ -180,7 +196,6 @@ export default function Home() {
       if (!latitude || !longitude) return;
 
       let nearbyType = "restaurant";
-
       if (selectedCard.title === "Hotels") nearbyType = "hotel";
       if (selectedCard.title === "Shopping") nearbyType = "shop";
 
@@ -189,9 +204,7 @@ export default function Home() {
       try {
         const response = await fetch("/api/nearby", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             latitude: Number(latitude),
             longitude: Number(longitude),
@@ -200,7 +213,6 @@ export default function Home() {
         });
 
         const data = await response.json();
-
         setNearbyPlaces(data.places || []);
       } catch (error) {
         console.error("Nearby places error:", error);
@@ -215,8 +227,7 @@ export default function Home() {
 
   useEffect(() => {
     async function loadServices() {
-      if (!selectedCard || !selectedOption || selectedCard.title === "Ask Wishy")
-        return;
+      if (!selectedCard || !selectedOption || selectedCard.title === "Ask Wishy") return;
 
       setLoading(true);
 
@@ -276,63 +287,32 @@ export default function Home() {
     );
 
     if (foundIntent) {
+      await saveWish(text, foundIntent.category);
+
       const deliveryWords = ["delivery", "deliver", "order", "доставка", "заказать"];
-      const restaurantWords = [
-        "restaurant",
-        "nearby",
-        "dine",
-        "dine-in",
-        "eat out",
-        "ресторан",
-        "покушать",
-        "рядом",
-      ];
+      const restaurantWords = ["restaurant", "nearby", "dine", "dine-in", "eat out", "ресторан", "покушать", "рядом"];
       const takeawayWords = ["takeaway", "take away", "pickup", "pick up", "самовывоз"];
       const airportWords = ["airport", "аэропорт"];
       const nearbyStoreWords = ["nearby store", "shop nearby", "магазин рядом", "рядом магазин"];
 
       if (foundIntent.category === "Food") {
-        if (deliveryWords.some((word) => text.includes(word))) {
-          openCard("Food", "🚚 Delivery");
-          return;
-        }
-
-        if (restaurantWords.some((word) => text.includes(word))) {
-          openCard("Food", "🍽 Restaurant");
-          return;
-        }
-
-        if (takeawayWords.some((word) => text.includes(word))) {
-          openCard("Food", "🥡 Takeaway");
-          return;
-        }
-
-        openCard("Food", null);
-        return;
+        if (deliveryWords.some((word) => text.includes(word))) return openCard("Food", "🚚 Delivery");
+        if (restaurantWords.some((word) => text.includes(word))) return openCard("Food", "🍽 Restaurant");
+        if (takeawayWords.some((word) => text.includes(word))) return openCard("Food", "🥡 Takeaway");
+        return openCard("Food", null);
       }
 
       if (foundIntent.category === "Taxi") {
-        if (airportWords.some((word) => text.includes(word))) {
-          openCard("Taxi", "✈️ Airport");
-          return;
-        }
-
-        openCard("Taxi", null);
-        return;
+        if (airportWords.some((word) => text.includes(word))) return openCard("Taxi", "✈️ Airport");
+        return openCard("Taxi", null);
       }
 
       if (foundIntent.category === "Shopping") {
-        if (nearbyStoreWords.some((word) => text.includes(word))) {
-          openCard("Shopping", "📍 Nearby store");
-          return;
-        }
-
-        openCard("Shopping", null);
-        return;
+        if (nearbyStoreWords.some((word) => text.includes(word))) return openCard("Shopping", "📍 Nearby store");
+        return openCard("Shopping", null);
       }
 
-      openCard(foundIntent.category, null);
-      return;
+      return openCard(foundIntent.category, null);
     }
 
     try {
@@ -340,21 +320,22 @@ export default function Home() {
 
       const response = await fetch("/api/wishy", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ text: wishText }),
       });
 
       const data: WishyResult = await response.json();
 
       if (data?.category) {
+        await saveWish(text, data.category);
         openCard(data.category, data.action_type);
       } else {
+        await saveWish(text, "Ask Wishy");
         openCard("Ask Wishy", "Ask anything");
       }
     } catch (error) {
       console.error("Wishy AI error:", error);
+      await saveWish(text, "Ask Wishy");
       openCard("Ask Wishy", "Ask anything");
     } finally {
       setAiLoading(false);
@@ -372,6 +353,11 @@ export default function Home() {
     if (selectedCard?.title === "Hotels") return "📍 Hotels near you";
     if (selectedCard?.title === "Shopping") return "📍 Stores near you";
     return "📍 Restaurants near you";
+  };
+
+  const runRecentWish = (wish: string) => {
+    setWishText(wish);
+    setTimeout(() => detectIntent(), 50);
   };
 
   return (
@@ -402,11 +388,9 @@ export default function Home() {
         </button>
       </div>
 
-      {aiLoading && (
-        <p className="text-gray-400 text-sm mb-4">Wishy is thinking...</p>
-      )}
+      {aiLoading && <p className="text-gray-400 text-sm mb-4">Wishy is thinking...</p>}
 
-      <div className="mb-8">
+      <div className="mb-6">
         <button
           onClick={requestLocation}
           className={`w-full rounded-2xl py-4 font-semibold transition ${
@@ -418,6 +402,24 @@ export default function Home() {
           {locationReady ? "📍 Location Connected" : "📍 Use My Location"}
         </button>
       </div>
+
+      {recentWishes.length > 0 && (
+        <div className="mb-8">
+          <p className="text-gray-400 text-sm mb-3">Recent Wishes</p>
+
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            {recentWishes.map((wish) => (
+              <button
+                key={wish.id}
+                onClick={() => runRecentWish(wish.wish_text)}
+                className="shrink-0 bg-[#151A2D] border border-[#22293D] rounded-full px-4 py-2 text-sm hover:border-violet-500 transition"
+              >
+                {wish.wish_text}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         {cards.map((card) => (
@@ -450,9 +452,7 @@ export default function Home() {
                   {selectedCard.emoji} {selectedCard.title}
                 </h2>
 
-                <p className="text-gray-400 mb-5">
-                  Choose what you want to do:
-                </p>
+                <p className="text-gray-400 mb-5">Choose what you want to do:</p>
 
                 <div className="space-y-3">
                   {selectedCard.options.map((option, index) => (
@@ -497,34 +497,23 @@ export default function Home() {
                 {locationReady &&
                   ((selectedCard.title === "Food" && selectedOption === "🍽 Restaurant") ||
                     selectedCard.title === "Hotels" ||
-                    (selectedCard.title === "Shopping" &&
-                      selectedOption === "📍 Nearby store")) && (
+                    (selectedCard.title === "Shopping" && selectedOption === "📍 Nearby store")) && (
                     <>
-                      {nearbyLoading && (
-                        <p className="text-gray-400">
-                          Wishy is searching nearby places...
-                        </p>
-                      )}
+                      {nearbyLoading && <p className="text-gray-400">Wishy is searching nearby places...</p>}
 
                       {!nearbyLoading && nearbyPlaces.length > 0 && (
                         <div className="mb-6 space-y-3">
-                          <p className="text-green-400 font-semibold">
-                            {getNearbyTitle()}
-                          </p>
+                          <p className="text-green-400 font-semibold">{getNearbyTitle()}</p>
 
                           {nearbyPlaces.map((place) => (
                             <div
                               key={`${place.id}-${place.latitude}-${place.longitude}`}
                               className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
                             >
-                              <h3 className="font-bold text-lg">
-                                {place.name}
-                              </h3>
+                              <h3 className="font-bold text-lg">{place.name}</h3>
 
                               <p className="text-gray-400 text-sm mt-1">
-                                {place.cuisine
-                                  ? `${place.type} · ${place.cuisine}`
-                                  : place.type}
+                                {place.cuisine ? `${place.type} · ${place.cuisine}` : place.type}
                               </p>
 
                               <a
@@ -532,12 +521,7 @@ export default function Home() {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 onClick={() =>
-                                  trackEvent(
-                                    "nearby_place_opened",
-                                    selectedCard.title,
-                                    selectedOption,
-                                    place.name
-                                  )
+                                  trackEvent("nearby_place_opened", selectedCard.title, selectedOption, place.name)
                                 }
                                 className="block mt-4 text-center bg-green-600 hover:bg-green-500 transition rounded-xl py-3 font-semibold"
                               >
@@ -549,52 +533,33 @@ export default function Home() {
                       )}
 
                       {!nearbyLoading && nearbyPlaces.length === 0 && (
-                        <p className="text-gray-400 mb-4">
-                          No nearby places found. Showing general services.
-                        </p>
+                        <p className="text-gray-400 mb-4">No nearby places found. Showing general services.</p>
                       )}
                     </>
                   )}
 
-                {loading && (
-                  <p className="text-gray-400">Wishy is searching...</p>
-                )}
+                {loading && <p className="text-gray-400">Wishy is searching...</p>}
 
                 {!loading && services.length === 0 && (
-                  <p className="text-gray-400">
-                    No services found yet. Add them in Supabase.
-                  </p>
+                  <p className="text-gray-400">No services found yet. Add them in Supabase.</p>
                 )}
 
                 <div className="space-y-3">
                   {services.map((service) => (
-                    <div
-                      key={service.id}
-                      className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
-                    >
+                    <div key={service.id} className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4">
                       <div className="flex items-start gap-3">
                         <div className="text-3xl">{service.emoji}</div>
 
                         <div className="flex-1">
-                          <h3 className="font-bold text-lg">
-                            {service.name}
-                          </h3>
-
-                          <p className="text-gray-400 text-sm mt-1">
-                            {service.description}
-                          </p>
+                          <h3 className="font-bold text-lg">{service.name}</h3>
+                          <p className="text-gray-400 text-sm mt-1">{service.description}</p>
 
                           <a
                             href={service.url}
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={() =>
-                              trackEvent(
-                                "service_opened",
-                                service.category,
-                                service.action_type,
-                                service.name
-                              )
+                              trackEvent("service_opened", service.category, service.action_type, service.name)
                             }
                             className="block mt-4 text-center bg-violet-600 hover:bg-violet-500 transition rounded-xl py-3 font-semibold"
                           >
@@ -626,10 +591,7 @@ export default function Home() {
               </>
             )}
 
-            <button
-              onClick={resetFlow}
-              className="mt-6 w-full text-gray-400 hover:text-white transition"
-            >
+            <button onClick={resetFlow} className="mt-6 w-full text-gray-400 hover:text-white transition">
               Close
             </button>
           </div>
