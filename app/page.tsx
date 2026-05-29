@@ -55,14 +55,26 @@ type AIRecommendation = {
   active: boolean;
 };
 
+type FavoritePlace = {
+  id: number;
+  place_name: string;
+  place_type: string;
+  category: string;
+  latitude: number;
+  longitude: number;
+  maps_url: string;
+};
+
 export default function Home() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [recentWishes, setRecentWishes] = useState<RecentWish[]>([]);
+  const [favorites, setFavorites] = useState<FavoritePlace[]>([]);
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
   const [conciergeCategory, setConciergeCategory] = useState<string | null>(null);
+  const [showFavorites, setShowFavorites] = useState(false);
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
   const [nearbyLoading, setNearbyLoading] = useState(false);
@@ -104,6 +116,52 @@ export default function Home() {
       });
     } catch (error) {
       console.error("Analytics error:", error);
+    }
+  };
+
+  const loadFavorites = async () => {
+    try {
+      const sessionId = getSessionId();
+
+      const { data, error } = await supabase
+        .from("favorite_places")
+        .select("*")
+        .eq("session_id", sessionId)
+        .order("created_at", { ascending: false })
+        .limit(10);
+
+      if (error) {
+        console.error("Favorites error:", error);
+        return;
+      }
+
+      setFavorites(data || []);
+    } catch (error) {
+      console.error("Favorites load error:", error);
+    }
+  };
+
+  const saveFavoritePlace = async (place: NearbyPlace, category: string) => {
+    try {
+      const sessionId = getSessionId();
+
+      await supabase.from("favorite_places").insert({
+        session_id: sessionId,
+        place_name: place.name,
+        place_type: place.type,
+        category,
+        latitude: place.latitude,
+        longitude: place.longitude,
+        maps_url: place.mapsUrl,
+      });
+
+      await trackEvent("favorite_place_saved", category, undefined, place.name);
+      await loadFavorites();
+
+      alert("Saved to favorites ❤️");
+    } catch (error) {
+      console.error("Favorite save error:", error);
+      alert("Could not save favorite");
     }
   };
 
@@ -176,40 +234,19 @@ export default function Home() {
   };
 
   const detectConciergeScenario = (text: string) => {
-    if (
-      text.includes("romantic") ||
-      text.includes("date") ||
-      text.includes("wife") ||
-      text.includes("вечер") ||
-      text.includes("роман")
-    ) {
+    if (text.includes("romantic") || text.includes("date") || text.includes("wife") || text.includes("вечер") || text.includes("роман")) {
       return "romantic";
     }
 
-    if (
-      text.includes("business") ||
-      text.includes("work trip") ||
-      text.includes("meeting") ||
-      text.includes("командировка")
-    ) {
+    if (text.includes("business") || text.includes("work trip") || text.includes("meeting") || text.includes("командировка")) {
       return "business";
     }
 
-    if (
-      text.includes("family") ||
-      text.includes("kids") ||
-      text.includes("children") ||
-      text.includes("семья") ||
-      text.includes("дети")
-    ) {
+    if (text.includes("family") || text.includes("kids") || text.includes("children") || text.includes("семья") || text.includes("дети")) {
       return "family";
     }
 
-    if (
-      text.includes("weekend") ||
-      text.includes("выходные") ||
-      text.includes("отдых")
-    ) {
+    if (text.includes("weekend") || text.includes("выходные") || text.includes("отдых")) {
       return "weekend";
     }
 
@@ -256,6 +293,7 @@ export default function Home() {
     if (savedLat && savedLng) setLocationReady(true);
 
     loadRecentWishes();
+    loadFavorites();
   }, []);
 
   useEffect(() => {
@@ -344,6 +382,7 @@ export default function Home() {
 
     setConciergeCategory(null);
     setRecommendations([]);
+    setShowFavorites(false);
 
     if (!matchedCard) {
       const askWishy = cards.find((card) => card.title === "Ask Wishy");
@@ -489,6 +528,7 @@ export default function Home() {
     setNearbyPlaces([]);
     setConciergeCategory(null);
     setRecommendations([]);
+    setShowFavorites(false);
   };
 
   const getNearbyTitle = () => {
@@ -540,7 +580,7 @@ export default function Home() {
 
       {aiLoading && <p className="text-gray-400 text-sm mb-4">Wishy is thinking...</p>}
 
-      <div className="mb-6">
+      <div className="mb-3">
         <button
           onClick={requestLocation}
           className={`w-full rounded-2xl py-4 font-semibold transition ${
@@ -550,6 +590,21 @@ export default function Home() {
           }`}
         >
           {locationReady ? "📍 Location Connected" : "📍 Use My Location"}
+        </button>
+      </div>
+
+      <div className="mb-6">
+        <button
+          onClick={() => {
+            setShowFavorites(true);
+            setSelectedCard(null);
+            setSelectedOption(null);
+            setConciergeCategory(null);
+            loadFavorites();
+          }}
+          className="w-full rounded-2xl py-4 font-semibold transition bg-[#151A2D] border border-[#22293D] hover:border-violet-500"
+        >
+          ⭐ Favorites
         </button>
       </div>
 
@@ -579,6 +634,7 @@ export default function Home() {
               trackEvent("category_opened", card.title);
               setConciergeCategory(null);
               setRecommendations([]);
+              setShowFavorites(false);
               setSelectedCard(card);
               setSelectedOption(null);
               setServices([]);
@@ -593,6 +649,59 @@ export default function Home() {
         ))}
       </div>
 
+      {showFavorites && (
+        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
+          <div className="w-full max-w-md bg-[#151A2D] rounded-t-3xl p-6 border-t border-[#2B3350] max-h-[85vh] overflow-y-auto">
+            <div className="w-14 h-1 bg-gray-600 rounded-full mx-auto mb-6" />
+
+            <h2 className="text-2xl font-bold mb-2">⭐ Favorites</h2>
+            <p className="text-gray-400 mb-5">Your saved places:</p>
+
+            {favorites.length === 0 && (
+              <p className="text-gray-400">No favorites yet.</p>
+            )}
+
+            <div className="space-y-3">
+              {favorites.map((favorite) => (
+                <div
+                  key={favorite.id}
+                  className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
+                >
+                  <h3 className="font-bold text-lg">{favorite.place_name}</h3>
+                  <p className="text-gray-400 text-sm mt-1">
+                    {favorite.category} · {favorite.place_type}
+                  </p>
+
+                  <a
+                    href={favorite.maps_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      trackEvent(
+                        "favorite_place_opened",
+                        favorite.category,
+                        undefined,
+                        favorite.place_name
+                      )
+                    }
+                    className="block mt-4 text-center bg-green-600 hover:bg-green-500 transition rounded-xl py-3 font-semibold"
+                  >
+                    Open in Maps
+                  </a>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={resetFlow}
+              className="mt-6 w-full text-gray-400 hover:text-white transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
+
       {conciergeCategory && (
         <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
           <div className="w-full max-w-md bg-[#151A2D] rounded-t-3xl p-6 border-t border-[#2B3350] max-h-[85vh] overflow-y-auto">
@@ -604,8 +713,8 @@ export default function Home() {
             <div className="space-y-3">
               {recommendations.map((item) => (
                 <button
-                   key={item.id}
-                   onClick={() => openRecommendation(item.title)}
+                  key={item.id}
+                  onClick={() => openRecommendation(item.title)}
                   className="w-full text-left bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4 hover:border-violet-500 transition"
                 >
                   <div className="flex gap-3 items-start">
@@ -705,6 +814,13 @@ export default function Home() {
                                 {place.cuisine ? `${place.type} · ${place.cuisine}` : place.type}
                               </p>
 
+                              <button
+                                onClick={() => saveFavoritePlace(place, selectedCard.title)}
+                                className="block mt-4 w-full text-center bg-[#1E263D] hover:bg-[#2A3555] transition rounded-xl py-3 font-semibold"
+                              >
+                                ❤️ Save
+                              </button>
+
                               <a
                                 href={place.mapsUrl}
                                 target="_blank"
@@ -712,9 +828,9 @@ export default function Home() {
                                 onClick={() =>
                                   trackEvent("nearby_place_opened", selectedCard.title, selectedOption, place.name)
                                 }
-                                className="block mt-4 text-center bg-green-600 hover:bg-green-500 transition rounded-xl py-3 font-semibold"
+                                className="block mt-3 text-center bg-green-600 hover:bg-green-500 transition rounded-xl py-3 font-semibold"
                               >
-                                Open in Maps
+                                🗺 Open in Maps
                               </a>
                             </div>
                           ))}
