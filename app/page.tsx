@@ -36,6 +36,7 @@ export default function Home() {
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
+  const [locationReady, setLocationReady] = useState(false);
 
   const trackEvent = async (
     eventType: string,
@@ -55,6 +56,47 @@ export default function Home() {
     } catch (error) {
       console.error("Analytics error:", error);
     }
+  };
+
+  const requestLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Geolocation is not supported on this device");
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+        const sessionId =
+          localStorage.getItem("wishy_session_id") || crypto.randomUUID();
+
+        localStorage.setItem("wishy_session_id", sessionId);
+        localStorage.setItem("wishy_lat", latitude.toString());
+        localStorage.setItem("wishy_lng", longitude.toString());
+
+        await supabase.from("user_locations").insert({
+          session_id: sessionId,
+          latitude,
+          longitude,
+        });
+
+        await trackEvent(
+          "location_connected",
+          undefined,
+          undefined,
+          undefined,
+          `${latitude},${longitude}`
+        );
+
+        setLocationReady(true);
+        alert("Location connected 📍");
+      },
+      (error) => {
+        console.error("Location error:", error);
+        alert("Location permission denied");
+      }
+    );
   };
 
   const cards: Card[] = [
@@ -95,6 +137,15 @@ export default function Home() {
       options: ["Ask anything"],
     },
   ];
+
+  useEffect(() => {
+    const savedLat = localStorage.getItem("wishy_lat");
+    const savedLng = localStorage.getItem("wishy_lng");
+
+    if (savedLat && savedLng) {
+      setLocationReady(true);
+    }
+  }, []);
 
   useEffect(() => {
     async function loadServices() {
@@ -244,7 +295,7 @@ export default function Home() {
         <p className="text-gray-400 mt-2">What do you wish right now?</p>
       </div>
 
-      <div className="mb-8 flex gap-2">
+      <div className="mb-4 flex gap-2">
         <input
           type="text"
           value={wishText}
@@ -266,6 +317,19 @@ export default function Home() {
       </div>
 
       {aiLoading && <p className="text-gray-400 text-sm mb-4">Wishy is thinking...</p>}
+
+      <div className="mb-8">
+        <button
+          onClick={requestLocation}
+          className={`w-full rounded-2xl py-4 font-semibold transition ${
+            locationReady
+              ? "bg-green-600 hover:bg-green-500"
+              : "bg-[#151A2D] border border-[#22293D] hover:border-violet-500"
+          }`}
+        >
+          {locationReady ? "📍 Location Connected" : "📍 Use My Location"}
+        </button>
+      </div>
 
       <div className="grid grid-cols-2 gap-4">
         {cards.map((card) => (
