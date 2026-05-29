@@ -45,12 +45,24 @@ type RecentWish = {
   category: string | null;
 };
 
+type AIRecommendation = {
+  id: number;
+  category: string;
+  title: string;
+  description: string;
+  emoji: string;
+  priority: number;
+  active: boolean;
+};
+
 export default function Home() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>([]);
   const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [recentWishes, setRecentWishes] = useState<RecentWish[]>([]);
+  const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
+  const [conciergeCategory, setConciergeCategory] = useState<string | null>(null);
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
   const [nearbyLoading, setNearbyLoading] = useState(false);
@@ -131,6 +143,77 @@ export default function Home() {
     } catch (error) {
       console.error("Recent wishes load error:", error);
     }
+  };
+
+  const loadRecommendations = async (category: string) => {
+    setAiLoading(true);
+
+    try {
+      const { data, error } = await supabase
+        .from("ai_recommendations")
+        .select("*")
+        .eq("category", category)
+        .eq("active", true)
+        .order("priority", { ascending: true });
+
+      if (error) {
+        console.error("Recommendations error:", error);
+        setRecommendations([]);
+      } else {
+        setRecommendations(data || []);
+      }
+
+      setConciergeCategory(category);
+      setSelectedCard(null);
+      setSelectedOption(null);
+      setServices([]);
+      setNearbyPlaces([]);
+
+      await trackEvent("concierge_opened", category);
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const detectConciergeScenario = (text: string) => {
+    if (
+      text.includes("romantic") ||
+      text.includes("date") ||
+      text.includes("wife") ||
+      text.includes("вечер") ||
+      text.includes("роман")
+    ) {
+      return "romantic";
+    }
+
+    if (
+      text.includes("business") ||
+      text.includes("work trip") ||
+      text.includes("meeting") ||
+      text.includes("командировка")
+    ) {
+      return "business";
+    }
+
+    if (
+      text.includes("family") ||
+      text.includes("kids") ||
+      text.includes("children") ||
+      text.includes("семья") ||
+      text.includes("дети")
+    ) {
+      return "family";
+    }
+
+    if (
+      text.includes("weekend") ||
+      text.includes("выходные") ||
+      text.includes("отдых")
+    ) {
+      return "weekend";
+    }
+
+    return null;
   };
 
   const requestLocation = () => {
@@ -259,6 +342,9 @@ export default function Home() {
   const openCard = (category: string, actionType: string | null = null) => {
     const matchedCard = cards.find((card) => card.title === category);
 
+    setConciergeCategory(null);
+    setRecommendations([]);
+
     if (!matchedCard) {
       const askWishy = cards.find((card) => card.title === "Ask Wishy");
       setSelectedCard(askWishy || null);
@@ -281,6 +367,14 @@ export default function Home() {
     if (!text) return;
 
     await trackEvent("wish_submitted", undefined, undefined, undefined, text);
+
+    const scenario = detectConciergeScenario(text);
+
+    if (scenario) {
+      await saveWish(text, scenario);
+      await loadRecommendations(scenario);
+      return;
+    }
 
     const foundIntent = intents.find((intent) =>
       intent.keywords.some((keyword) => text.includes(keyword))
@@ -347,12 +441,22 @@ export default function Home() {
     setSelectedOption(null);
     setServices([]);
     setNearbyPlaces([]);
+    setConciergeCategory(null);
+    setRecommendations([]);
   };
 
   const getNearbyTitle = () => {
     if (selectedCard?.title === "Hotels") return "📍 Hotels near you";
     if (selectedCard?.title === "Shopping") return "📍 Stores near you";
     return "📍 Restaurants near you";
+  };
+
+  const getConciergeTitle = () => {
+    if (conciergeCategory === "romantic") return "❤️ Romantic Plan";
+    if (conciergeCategory === "business") return "💼 Business Trip Plan";
+    if (conciergeCategory === "family") return "👨‍👩‍👧 Family Plan";
+    if (conciergeCategory === "weekend") return "🏖 Weekend Plan";
+    return "✨ Wishy Plan";
   };
 
   const runRecentWish = (wish: string) => {
@@ -427,6 +531,8 @@ export default function Home() {
             key={card.title}
             onClick={() => {
               trackEvent("category_opened", card.title);
+              setConciergeCategory(null);
+              setRecommendations([]);
               setSelectedCard(card);
               setSelectedOption(null);
               setServices([]);
@@ -440,6 +546,42 @@ export default function Home() {
           </button>
         ))}
       </div>
+
+      {conciergeCategory && (
+        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
+          <div className="w-full max-w-md bg-[#151A2D] rounded-t-3xl p-6 border-t border-[#2B3350] max-h-[85vh] overflow-y-auto">
+            <div className="w-14 h-1 bg-gray-600 rounded-full mx-auto mb-6" />
+
+            <h2 className="text-2xl font-bold mb-2">{getConciergeTitle()}</h2>
+            <p className="text-gray-400 mb-5">Wishy prepared a smart plan for you:</p>
+
+            <div className="space-y-3">
+              {recommendations.map((item) => (
+                <div
+                  key={item.id}
+                  className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
+                >
+                  <div className="flex gap-3 items-start">
+                    <div className="text-3xl">{item.emoji}</div>
+
+                    <div>
+                      <h3 className="font-bold text-lg">{item.title}</h3>
+                      <p className="text-gray-400 text-sm mt-1">{item.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <button
+              onClick={resetFlow}
+              className="mt-6 w-full text-gray-400 hover:text-white transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {selectedCard && (
         <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
