@@ -29,12 +29,24 @@ type WishyResult = {
   confidence: number;
 };
 
+type NearbyPlace = {
+  id: number;
+  name: string;
+  type: string;
+  cuisine: string | null;
+  latitude: number;
+  longitude: number;
+  mapsUrl: string;
+};
+
 export default function Home() {
   const [selectedCard, setSelectedCard] = useState<Card | null>(null);
   const [selectedOption, setSelectedOption] = useState<string | null>(null);
   const [services, setServices] = useState<Service[]>([]);
+  const [nearbyPlaces, setNearbyPlaces] = useState<NearbyPlace[]>([]);
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [nearbyLoading, setNearbyLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [locationReady, setLocationReady] = useState(false);
 
@@ -148,8 +160,54 @@ export default function Home() {
   }, []);
 
   useEffect(() => {
+    async function loadNearbyPlaces() {
+      if (
+        selectedCard?.title !== "Food" ||
+        selectedOption !== "🍽 Restaurant" ||
+        !locationReady
+      ) {
+        setNearbyPlaces([]);
+        return;
+      }
+
+      const latitude = localStorage.getItem("wishy_lat");
+      const longitude = localStorage.getItem("wishy_lng");
+
+      if (!latitude || !longitude) return;
+
+      setNearbyLoading(true);
+
+      try {
+        const response = await fetch("/api/nearby", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            latitude: Number(latitude),
+            longitude: Number(longitude),
+            query: wishText || "restaurant",
+          }),
+        });
+
+        const data = await response.json();
+
+        setNearbyPlaces(data.places || []);
+      } catch (error) {
+        console.error("Nearby places error:", error);
+        setNearbyPlaces([]);
+      } finally {
+        setNearbyLoading(false);
+      }
+    }
+
+    loadNearbyPlaces();
+  }, [selectedCard, selectedOption, locationReady, wishText]);
+
+  useEffect(() => {
     async function loadServices() {
-      if (!selectedCard || !selectedOption || selectedCard.title === "Ask Wishy") return;
+      if (!selectedCard || !selectedOption || selectedCard.title === "Ask Wishy")
+        return;
 
       setLoading(true);
 
@@ -194,6 +252,7 @@ export default function Home() {
     setSelectedCard(matchedCard);
     setSelectedOption(actionType);
     setServices([]);
+    setNearbyPlaces([]);
   };
 
   const detectIntent = async () => {
@@ -208,7 +267,13 @@ export default function Home() {
     );
 
     if (foundIntent) {
-      const deliveryWords = ["delivery", "deliver", "order", "доставка", "заказать"];
+      const deliveryWords = [
+        "delivery",
+        "deliver",
+        "order",
+        "доставка",
+        "заказать",
+      ];
       const restaurantWords = [
         "restaurant",
         "nearby",
@@ -219,7 +284,13 @@ export default function Home() {
         "покушать",
         "рядом",
       ];
-      const takeawayWords = ["takeaway", "take away", "pickup", "pick up", "самовывоз"];
+      const takeawayWords = [
+        "takeaway",
+        "take away",
+        "pickup",
+        "pick up",
+        "самовывоз",
+      ];
       const airportWords = ["airport", "аэропорт"];
 
       if (foundIntent.category === "Food") {
@@ -286,6 +357,7 @@ export default function Home() {
     setSelectedCard(null);
     setSelectedOption(null);
     setServices([]);
+    setNearbyPlaces([]);
   };
 
   return (
@@ -316,7 +388,9 @@ export default function Home() {
         </button>
       </div>
 
-      {aiLoading && <p className="text-gray-400 text-sm mb-4">Wishy is thinking...</p>}
+      {aiLoading && (
+        <p className="text-gray-400 text-sm mb-4">Wishy is thinking...</p>
+      )}
 
       <div className="mb-8">
         <button
@@ -340,6 +414,7 @@ export default function Home() {
               setSelectedCard(card);
               setSelectedOption(null);
               setServices([]);
+              setNearbyPlaces([]);
             }}
             className="text-left bg-[#151A2D] border border-[#22293D] rounded-3xl p-5 cursor-pointer transition hover:scale-[1.03] hover:border-violet-500"
           >
@@ -361,7 +436,9 @@ export default function Home() {
                   {selectedCard.emoji} {selectedCard.title}
                 </h2>
 
-                <p className="text-gray-400 mb-5">Choose what you want to do:</p>
+                <p className="text-gray-400 mb-5">
+                  Choose what you want to do:
+                </p>
 
                 <div className="space-y-3">
                   {selectedCard.options.map((option, index) => (
@@ -390,6 +467,7 @@ export default function Home() {
                   onClick={() => {
                     setSelectedOption(null);
                     setServices([]);
+                    setNearbyPlaces([]);
                   }}
                   className="text-gray-400 hover:text-white mb-4"
                 >
@@ -402,7 +480,69 @@ export default function Home() {
 
                 <p className="text-gray-400 mb-5">Best options for you:</p>
 
-                {loading && <p className="text-gray-400">Wishy is searching...</p>}
+                {selectedCard.title === "Food" &&
+                  selectedOption === "🍽 Restaurant" &&
+                  locationReady && (
+                    <>
+                      {nearbyLoading && (
+                        <p className="text-gray-400">
+                          Wishy is searching nearby places...
+                        </p>
+                      )}
+
+                      {!nearbyLoading && nearbyPlaces.length > 0 && (
+                        <div className="mb-6 space-y-3">
+                          <p className="text-green-400 font-semibold">
+                            📍 Restaurants near you
+                          </p>
+
+                          {nearbyPlaces.map((place) => (
+                            <div
+                              key={place.id}
+                              className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
+                            >
+                              <h3 className="font-bold text-lg">
+                                {place.name}
+                              </h3>
+
+                              <p className="text-gray-400 text-sm mt-1">
+                                {place.cuisine
+                                  ? `${place.type} · ${place.cuisine}`
+                                  : place.type}
+                              </p>
+
+                              <a
+                                href={place.mapsUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() =>
+                                  trackEvent(
+                                    "nearby_place_opened",
+                                    "Food",
+                                    "🍽 Restaurant",
+                                    place.name
+                                  )
+                                }
+                                className="block mt-4 text-center bg-green-600 hover:bg-green-500 transition rounded-xl py-3 font-semibold"
+                              >
+                                Open in Maps
+                              </a>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {!nearbyLoading && nearbyPlaces.length === 0 && (
+                        <p className="text-gray-400 mb-4">
+                          No nearby restaurants found. Showing general services.
+                        </p>
+                      )}
+                    </>
+                  )}
+
+                {loading && (
+                  <p className="text-gray-400">Wishy is searching...</p>
+                )}
 
                 {!loading && services.length === 0 && (
                   <p className="text-gray-400">
@@ -420,7 +560,10 @@ export default function Home() {
                         <div className="text-3xl">{service.emoji}</div>
 
                         <div className="flex-1">
-                          <h3 className="font-bold text-lg">{service.name}</h3>
+                          <h3 className="font-bold text-lg">
+                            {service.name}
+                          </h3>
+
                           <p className="text-gray-400 text-sm mt-1">
                             {service.description}
                           </p>
