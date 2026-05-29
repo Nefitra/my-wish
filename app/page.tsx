@@ -50,6 +50,45 @@ export default function Home() {
   const [aiLoading, setAiLoading] = useState(false);
   const [locationReady, setLocationReady] = useState(false);
 
+  const cards: Card[] = [
+    {
+      emoji: "🍔",
+      title: "Food",
+      subtitle: "Delivery or restaurant",
+      options: ["🚚 Delivery", "🍽 Restaurant", "🥡 Takeaway"],
+    },
+    {
+      emoji: "🚕",
+      title: "Taxi",
+      subtitle: "Ride anywhere",
+      options: ["⚡ Ride now", "✈️ Airport", "📅 Schedule ride"],
+    },
+    {
+      emoji: "🛍",
+      title: "Shopping",
+      subtitle: "Buy online or nearby",
+      options: ["🌐 Buy online", "📍 Nearby store", "💸 Compare prices"],
+    },
+    {
+      emoji: "🎁",
+      title: "Gifts",
+      subtitle: "Find perfect ideas",
+      options: ["❤️ Romantic", "👩 For woman", "👨 For man", "👶 For child"],
+    },
+    {
+      emoji: "🏨",
+      title: "Hotels",
+      subtitle: "Stay tonight",
+      options: ["🌙 Tonight", "🏖 Weekend", "💶 Cheap", "✨ Luxury"],
+    },
+    {
+      emoji: "💬",
+      title: "Ask Wishy",
+      subtitle: "AI instant help",
+      options: ["Ask anything"],
+    },
+  ];
+
   const trackEvent = async (
     eventType: string,
     category?: string,
@@ -111,45 +150,6 @@ export default function Home() {
     );
   };
 
-  const cards: Card[] = [
-    {
-      emoji: "🍔",
-      title: "Food",
-      subtitle: "Delivery or restaurant",
-      options: ["🚚 Delivery", "🍽 Restaurant", "🥡 Takeaway"],
-    },
-    {
-      emoji: "🚕",
-      title: "Taxi",
-      subtitle: "Ride anywhere",
-      options: ["⚡ Ride now", "✈️ Airport", "📅 Schedule ride"],
-    },
-    {
-      emoji: "🛍",
-      title: "Shopping",
-      subtitle: "Buy online or nearby",
-      options: ["🌐 Buy online", "📍 Nearby store", "💸 Compare prices"],
-    },
-    {
-      emoji: "🎁",
-      title: "Gifts",
-      subtitle: "Find perfect ideas",
-      options: ["❤️ Romantic", "👩 For woman", "👨 For man", "👶 For child"],
-    },
-    {
-      emoji: "🏨",
-      title: "Hotels",
-      subtitle: "Stay tonight",
-      options: ["🌙 Tonight", "🏖 Weekend", "💶 Cheap", "✨ Luxury"],
-    },
-    {
-      emoji: "💬",
-      title: "Ask Wishy",
-      subtitle: "AI instant help",
-      options: ["Ask anything"],
-    },
-  ];
-
   useEffect(() => {
     const savedLat = localStorage.getItem("wishy_lat");
     const savedLng = localStorage.getItem("wishy_lng");
@@ -161,11 +161,15 @@ export default function Home() {
 
   useEffect(() => {
     async function loadNearbyPlaces() {
-      if (
-        selectedCard?.title !== "Food" ||
-        selectedOption !== "🍽 Restaurant" ||
-        !locationReady
-      ) {
+      const shouldSearchNearby =
+        locationReady &&
+        selectedCard &&
+        selectedOption &&
+        ((selectedCard.title === "Food" && selectedOption === "🍽 Restaurant") ||
+          selectedCard.title === "Hotels" ||
+          (selectedCard.title === "Shopping" && selectedOption === "📍 Nearby store"));
+
+      if (!shouldSearchNearby) {
         setNearbyPlaces([]);
         return;
       }
@@ -174,6 +178,11 @@ export default function Home() {
       const longitude = localStorage.getItem("wishy_lng");
 
       if (!latitude || !longitude) return;
+
+      let nearbyType = "restaurant";
+
+      if (selectedCard.title === "Hotels") nearbyType = "hotel";
+      if (selectedCard.title === "Shopping") nearbyType = "shop";
 
       setNearbyLoading(true);
 
@@ -186,7 +195,7 @@ export default function Home() {
           body: JSON.stringify({
             latitude: Number(latitude),
             longitude: Number(longitude),
-            query: wishText || "restaurant",
+            type: nearbyType,
           }),
         });
 
@@ -202,7 +211,7 @@ export default function Home() {
     }
 
     loadNearbyPlaces();
-  }, [selectedCard, selectedOption, locationReady, wishText]);
+  }, [selectedCard, selectedOption, locationReady]);
 
   useEffect(() => {
     async function loadServices() {
@@ -267,13 +276,7 @@ export default function Home() {
     );
 
     if (foundIntent) {
-      const deliveryWords = [
-        "delivery",
-        "deliver",
-        "order",
-        "доставка",
-        "заказать",
-      ];
+      const deliveryWords = ["delivery", "deliver", "order", "доставка", "заказать"];
       const restaurantWords = [
         "restaurant",
         "nearby",
@@ -284,14 +287,9 @@ export default function Home() {
         "покушать",
         "рядом",
       ];
-      const takeawayWords = [
-        "takeaway",
-        "take away",
-        "pickup",
-        "pick up",
-        "самовывоз",
-      ];
+      const takeawayWords = ["takeaway", "take away", "pickup", "pick up", "самовывоз"];
       const airportWords = ["airport", "аэропорт"];
+      const nearbyStoreWords = ["nearby store", "shop nearby", "магазин рядом", "рядом магазин"];
 
       if (foundIntent.category === "Food") {
         if (deliveryWords.some((word) => text.includes(word))) {
@@ -320,6 +318,16 @@ export default function Home() {
         }
 
         openCard("Taxi", null);
+        return;
+      }
+
+      if (foundIntent.category === "Shopping") {
+        if (nearbyStoreWords.some((word) => text.includes(word))) {
+          openCard("Shopping", "📍 Nearby store");
+          return;
+        }
+
+        openCard("Shopping", null);
         return;
       }
 
@@ -358,6 +366,12 @@ export default function Home() {
     setSelectedOption(null);
     setServices([]);
     setNearbyPlaces([]);
+  };
+
+  const getNearbyTitle = () => {
+    if (selectedCard?.title === "Hotels") return "📍 Hotels near you";
+    if (selectedCard?.title === "Shopping") return "📍 Stores near you";
+    return "📍 Restaurants near you";
   };
 
   return (
@@ -480,9 +494,11 @@ export default function Home() {
 
                 <p className="text-gray-400 mb-5">Best options for you:</p>
 
-                {selectedCard.title === "Food" &&
-                  selectedOption === "🍽 Restaurant" &&
-                  locationReady && (
+                {locationReady &&
+                  ((selectedCard.title === "Food" && selectedOption === "🍽 Restaurant") ||
+                    selectedCard.title === "Hotels" ||
+                    (selectedCard.title === "Shopping" &&
+                      selectedOption === "📍 Nearby store")) && (
                     <>
                       {nearbyLoading && (
                         <p className="text-gray-400">
@@ -493,12 +509,12 @@ export default function Home() {
                       {!nearbyLoading && nearbyPlaces.length > 0 && (
                         <div className="mb-6 space-y-3">
                           <p className="text-green-400 font-semibold">
-                            📍 Restaurants near you
+                            {getNearbyTitle()}
                           </p>
 
                           {nearbyPlaces.map((place) => (
                             <div
-                              key={place.id}
+                              key={`${place.id}-${place.latitude}-${place.longitude}`}
                               className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
                             >
                               <h3 className="font-bold text-lg">
@@ -518,8 +534,8 @@ export default function Home() {
                                 onClick={() =>
                                   trackEvent(
                                     "nearby_place_opened",
-                                    "Food",
-                                    "🍽 Restaurant",
+                                    selectedCard.title,
+                                    selectedOption,
                                     place.name
                                   )
                                 }
@@ -534,7 +550,7 @@ export default function Home() {
 
                       {!nearbyLoading && nearbyPlaces.length === 0 && (
                         <p className="text-gray-400 mb-4">
-                          No nearby restaurants found. Showing general services.
+                          No nearby places found. Showing general services.
                         </p>
                       )}
                     </>
