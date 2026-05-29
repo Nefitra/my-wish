@@ -6,10 +6,7 @@ type OverpassElement = {
   id: number;
   lat?: number;
   lon?: number;
-  center?: {
-    lat: number;
-    lon: number;
-  };
+  center?: { lat: number; lon: number };
   tags?: {
     name?: string;
     amenity?: string;
@@ -18,6 +15,41 @@ type OverpassElement = {
     cuisine?: string;
   };
 };
+
+function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) ** 2;
+
+  return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+}
+
+function getWishyScore(distance: number, hasName: boolean, type: string) {
+  let score = 40;
+
+  if (distance <= 500) score += 35;
+  else if (distance <= 1000) score += 28;
+  else if (distance <= 2000) score += 20;
+  else if (distance <= 5000) score += 12;
+  else score += 5;
+
+  if (hasName) score += 15;
+
+  if (
+    ["restaurant", "cafe", "fast_food", "hotel", "hostel", "guest_house"].includes(
+      type
+    )
+  ) {
+    score += 10;
+  }
+
+  return Math.min(score, 99);
+}
 
 export async function POST(request: Request) {
   try {
@@ -80,7 +112,6 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
-      console.error("Overpass response error:", response.status);
       return NextResponse.json({ type: searchType, places: [] });
     }
 
@@ -91,24 +122,28 @@ export async function POST(request: Request) {
         const lat = item.lat || item.center?.lat;
         const lon = item.lon || item.center?.lon;
 
+        if (!lat || !lon) return null;
+
+        const placeType =
+          item.tags?.tourism || item.tags?.shop || item.tags?.amenity || searchType;
+
+        const distance = distanceMeters(latitude, longitude, lat, lon);
+        const hasName = Boolean(item.tags?.name);
+
         return {
           id: item.id,
           name: item.tags?.name || "Unnamed place",
-          type:
-            item.tags?.tourism ||
-            item.tags?.shop ||
-            item.tags?.amenity ||
-            searchType,
+          type: placeType,
           cuisine: item.tags?.cuisine || null,
           latitude: lat,
           longitude: lon,
+          distanceMeters: distance,
+          wishyScore: getWishyScore(distance, hasName, placeType),
           mapsUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`,
         };
       })
-      .filter(
-        (place: { latitude?: number; longitude?: number }) =>
-          place.latitude && place.longitude
-      )
+      .filter(Boolean)
+      .sort((a: any, b: any) => b.wishyScore - a.wishyScore)
       .slice(0, 10);
 
     return NextResponse.json({

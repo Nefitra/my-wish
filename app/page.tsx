@@ -1,8 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabase";
 import { intents } from "@/data/intents";
+
+const MapView = dynamic(() => import("@/components/MapView"), {
+  ssr: false,
+});
 
 type Card = {
   emoji: string;
@@ -37,6 +42,8 @@ type NearbyPlace = {
   latitude: number;
   longitude: number;
   mapsUrl: string;
+  distanceMeters: number;
+  wishyScore: number;
 };
 
 type RecentWish = {
@@ -75,6 +82,7 @@ export default function Home() {
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
   const [conciergeCategory, setConciergeCategory] = useState<string | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
+  const [showMap, setShowMap] = useState(false);
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
   const [nearbyLoading, setNearbyLoading] = useState(false);
@@ -98,6 +106,20 @@ export default function Home() {
     localStorage.setItem("wishy_session_id", sessionId);
     return sessionId;
   };
+
+  const getUserCoords = () => {
+    const lat = localStorage.getItem("wishy_lat");
+    const lng = localStorage.getItem("wishy_lng");
+
+    if (!lat || !lng) return null;
+
+    return {
+      lat: Number(lat),
+      lng: Number(lng),
+    };
+  };
+
+  const userCoords = typeof window !== "undefined" ? getUserCoords() : null;
 
   const trackEvent = async (
     eventType: string,
@@ -383,6 +405,7 @@ export default function Home() {
     setConciergeCategory(null);
     setRecommendations([]);
     setShowFavorites(false);
+    setShowMap(false);
 
     if (!matchedCard) {
       const askWishy = cards.find((card) => card.title === "Ask Wishy");
@@ -529,6 +552,7 @@ export default function Home() {
     setConciergeCategory(null);
     setRecommendations([]);
     setShowFavorites(false);
+    setShowMap(false);
   };
 
   const getNearbyTitle = () => {
@@ -600,6 +624,7 @@ export default function Home() {
             setSelectedCard(null);
             setSelectedOption(null);
             setConciergeCategory(null);
+            setShowMap(false);
             loadFavorites();
           }}
           className="w-full rounded-2xl py-4 font-semibold transition bg-[#151A2D] border border-[#22293D] hover:border-violet-500"
@@ -635,6 +660,7 @@ export default function Home() {
               setConciergeCategory(null);
               setRecommendations([]);
               setShowFavorites(false);
+              setShowMap(false);
               setSelectedCard(card);
               setSelectedOption(null);
               setServices([]);
@@ -648,6 +674,29 @@ export default function Home() {
           </button>
         ))}
       </div>
+
+      {showMap && userCoords && (
+        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
+          <div className="w-full max-w-md bg-[#151A2D] rounded-t-3xl p-6 border-t border-[#2B3350] max-h-[90vh] overflow-y-auto">
+            <div className="w-14 h-1 bg-gray-600 rounded-full mx-auto mb-6" />
+
+            <h2 className="text-2xl font-bold mb-4">🗺 Nearby Map</h2>
+
+            <MapView
+              userLat={userCoords.lat}
+              userLng={userCoords.lng}
+              places={nearbyPlaces}
+            />
+
+            <button
+              onClick={() => setShowMap(false)}
+              className="mt-6 w-full text-gray-400 hover:text-white transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {showFavorites && (
         <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
@@ -803,12 +852,26 @@ export default function Home() {
                         <div className="mb-6 space-y-3">
                           <p className="text-green-400 font-semibold">{getNearbyTitle()}</p>
 
+                          <button
+                            onClick={() => setShowMap(true)}
+                            className="w-full bg-green-600 hover:bg-green-500 transition rounded-xl py-3 font-semibold"
+                          >
+                            🗺 View Map
+                          </button>
+
                           {nearbyPlaces.map((place) => (
                             <div
                               key={`${place.id}-${place.latitude}-${place.longitude}`}
                               className="bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4"
                             >
                               <h3 className="font-bold text-lg">{place.name}</h3>
+
+                              <p className="text-green-400 text-sm font-semibold mt-2">
+                                ⭐ Wishy Score {place.wishyScore}% · 📍{" "}
+                                {place.distanceMeters < 1000
+                                  ? `${place.distanceMeters}m`
+                                  : `${(place.distanceMeters / 1000).toFixed(1)}km`}
+                              </p>
 
                               <p className="text-gray-400 text-sm mt-1">
                                 {place.cuisine ? `${place.type} · ${place.cuisine}` : place.type}
