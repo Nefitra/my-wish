@@ -604,8 +604,8 @@ export default function Home() {
             <div className="space-y-3">
               {recommendations.map((item) => (
                 <button
-                  key={item.id}
-                  onClick={() => openRecommendation(item.title)}
+                   key={item.id}
+                   onClick={() => openRecommendation(item.title)}
                   className="w-full text-left bg-[#0B0F1A] border border-[#2B3350] rounded-2xl p-4 hover:border-violet-500 transition"
                 >
                   <div className="flex gap-3 items-start">
