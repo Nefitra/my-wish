@@ -88,6 +88,8 @@ export default function Home() {
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [locationReady, setLocationReady] = useState(false);
+  const [budget, setBudget] = useState("Any");
+  const [showBudget, setShowBudget] = useState(false);
 
   const cards: Card[] = [
     { emoji: "🍔", title: "Food", subtitle: "Delivery or restaurant", options: ["🚚 Delivery", "🍽 Restaurant", "🥡 Takeaway"] },
@@ -352,6 +354,7 @@ export default function Home() {
             latitude: Number(latitude),
             longitude: Number(longitude),
             type: nearbyType,
+            budget,
           }),
         });
 
@@ -366,7 +369,7 @@ export default function Home() {
     }
 
     loadNearbyPlaces();
-  }, [selectedCard, selectedOption, locationReady]);
+  }, [selectedCard, selectedOption, locationReady, budget]);
 
   useEffect(() => {
     async function loadServices() {
@@ -633,6 +636,15 @@ export default function Home() {
         </button>
       </div>
 
+      <div className="mb-6">
+        <button
+          onClick={() => setShowBudget(true)}
+          className="w-full rounded-2xl py-4 font-semibold transition bg-[#151A2D] border border-[#22293D] hover:border-violet-500"
+        >
+          💶 Budget: {budget}
+        </button>
+      </div>
+
       {recentWishes.length > 0 && (
         <div className="mb-8">
           <p className="text-gray-400 text-sm mb-3">Recent Wishes</p>
@@ -674,6 +686,38 @@ export default function Home() {
           </button>
         ))}
       </div>
+
+      {showBudget && (
+        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
+          <div className="w-full max-w-md bg-[#151A2D] rounded-t-3xl p-6 border-t border-[#2B3350]">
+            <div className="w-14 h-1 bg-gray-600 rounded-full mx-auto mb-6" />
+            <h2 className="text-2xl font-bold mb-2">💶 Choose Budget</h2>
+            <p className="text-gray-400 mb-5">Wishy will use it for better ranking.</p>
+            <div className="space-y-3">
+              {["Any","Cheap","Medium","Premium","Luxury"].map((item) => (
+                <button
+                  key={item}
+                  onClick={() => {
+                    setBudget(item);
+                    setShowBudget(false);
+                  }}
+                  className={`w-full rounded-2xl py-4 font-semibold transition ${
+                    budget === item ? "bg-violet-600" : "bg-[#1E263D] hover:bg-[#2A3555]"
+                  }`}
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowBudget(false)}
+              className="mt-6 w-full text-gray-400 hover:text-white transition"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      )}
 
       {showMap && userCoords && (
         <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
@@ -867,7 +911,7 @@ export default function Home() {
                               <h3 className="font-bold text-lg">{place.name}</h3>
 
                               <p className="text-green-400 text-sm font-semibold mt-2">
-                                ⭐ Wishy Score {place.wishyScore}% · 📍{" "}
+                                ⭐ Wishy Score {place.wishyScore}% · 💶 {budget} · 📍{" "}
                                 {place.distanceMeters < 1000
                                   ? `${place.distanceMeters}m`
                                   : `${(place.distanceMeters / 1000).toFixed(1)}km`}

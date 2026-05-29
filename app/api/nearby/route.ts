@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 type SearchType = "restaurant" | "hotel" | "shop";
+type BudgetType = "Any" | "Cheap" | "Medium" | "Premium" | "Luxury";
 
 type OverpassElement = {
   id: number;
@@ -29,7 +30,41 @@ function distanceMeters(lat1: number, lon1: number, lat2: number, lon2: number) 
   return Math.round(R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 }
 
-function getWishyScore(distance: number, hasName: boolean, type: string) {
+function getBudgetScore(type: string, budget: BudgetType) {
+  if (budget === "Any") return 0;
+
+  const cheapTypes = ["fast_food", "cafe", "convenience", "supermarket"];
+  const premiumTypes = ["restaurant", "hotel", "guest_house"];
+  const luxuryTypes = ["hotel", "restaurant"];
+
+  if (budget === "Cheap") {
+    if (cheapTypes.includes(type)) return 20;
+    if (premiumTypes.includes(type)) return -5;
+  }
+
+  if (budget === "Medium") {
+    if (["restaurant", "cafe", "supermarket"].includes(type)) return 12;
+  }
+
+  if (budget === "Premium") {
+    if (premiumTypes.includes(type)) return 18;
+    if (cheapTypes.includes(type)) return -8;
+  }
+
+  if (budget === "Luxury") {
+    if (luxuryTypes.includes(type)) return 22;
+    if (cheapTypes.includes(type)) return -15;
+  }
+
+  return 0;
+}
+
+function getWishyScore(
+  distance: number,
+  hasName: boolean,
+  type: string,
+  budget: BudgetType
+) {
   let score = 40;
 
   if (distance <= 500) score += 35;
@@ -48,12 +83,14 @@ function getWishyScore(distance: number, hasName: boolean, type: string) {
     score += 10;
   }
 
-  return Math.min(score, 99);
+  score += getBudgetScore(type, budget);
+
+  return Math.max(1, Math.min(score, 99));
 }
 
 export async function POST(request: Request) {
   try {
-    const { latitude, longitude, type } = await request.json();
+    const { latitude, longitude, type, budget } = await request.json();
 
     if (!latitude || !longitude) {
       return NextResponse.json(
@@ -63,6 +100,7 @@ export async function POST(request: Request) {
     }
 
     const searchType: SearchType = type || "restaurant";
+    const selectedBudget: BudgetType = budget || "Any";
 
     let overpassQuery = "";
 
@@ -112,7 +150,11 @@ export async function POST(request: Request) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ type: searchType, places: [] });
+      return NextResponse.json({
+        type: searchType,
+        budget: selectedBudget,
+        places: [],
+      });
     }
 
     const data = await response.json();
@@ -138,7 +180,8 @@ export async function POST(request: Request) {
           latitude: lat,
           longitude: lon,
           distanceMeters: distance,
-          wishyScore: getWishyScore(distance, hasName, placeType),
+          wishyScore: getWishyScore(distance, hasName, placeType, selectedBudget),
+          budget: selectedBudget,
           mapsUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lon}`,
         };
       })
@@ -148,6 +191,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       type: searchType,
+      budget: selectedBudget,
       places,
     });
   } catch (error) {
