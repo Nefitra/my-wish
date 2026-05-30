@@ -146,6 +146,24 @@ export default function Home() {
     }
   };
 
+  const savePreference = async (key: string, value: string) => {
+    try {
+      await fetch("/api/preferences", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          session_id: getSessionId(),
+          preference_key: key,
+          preference_value: value,
+        }),
+      });
+    } catch (error) {
+      console.error("Preference save error:", error);
+    }
+  };
+
   const loadFavorites = async () => {
     try {
       const sessionId = getSessionId();
@@ -206,6 +224,10 @@ export default function Home() {
           rating,
         }),
       });
+
+      if (rating === 1) {
+        await savePreference("liked_place", place.name);
+      }
 
       await trackEvent(
         rating === 1 ? "place_liked" : "place_disliked",
@@ -345,8 +367,10 @@ export default function Home() {
   useEffect(() => {
     const savedLat = localStorage.getItem("wishy_lat");
     const savedLng = localStorage.getItem("wishy_lng");
+    const savedBudget = localStorage.getItem("wishy_budget");
 
     if (savedLat && savedLng) setLocationReady(true);
+    if (savedBudget) setBudget(savedBudget);
 
     loadRecentWishes();
     loadFavorites();
@@ -515,6 +539,7 @@ export default function Home() {
 
     if (scenario) {
       await saveWish(text, scenario);
+      await savePreference("favorite_scenario", scenario);
       await loadRecommendations(scenario);
       return;
     }
@@ -732,6 +757,7 @@ export default function Home() {
             key={card.title}
             onClick={() => {
               trackEvent("category_opened", card.title);
+              savePreference("favorite_category", card.title);
               setConciergeCategory(null);
               setRecommendations([]);
               setShowFavorites(false);
@@ -760,8 +786,11 @@ export default function Home() {
               {["Any","Cheap","Medium","Premium","Luxury"].map((item) => (
                 <button
                   key={item}
-                  onClick={() => {
+                  onClick={async () => {
                     setBudget(item);
+                    localStorage.setItem("wishy_budget", item);
+                    await savePreference("default_budget", item);
+                    await trackEvent("budget_selected", item);
                     setShowBudget(false);
                   }}
                   className={`w-full rounded-2xl py-4 font-semibold transition ${
