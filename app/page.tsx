@@ -164,7 +164,30 @@ export default function Home() {
     }
   };
 
-  const loadFavorites = async () => {
+  
+  const updateTrending = async (
+    placeId: string,
+    placeName: string,
+    category: string,
+    action: "like" | "save" | "open"
+  ) => {
+    try {
+      await fetch("/api/trending", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          place_id: placeId,
+          place_name: placeName,
+          category,
+          action,
+        }),
+      });
+    } catch (e) {
+      console.error("Trending error:", e);
+    }
+  };
+
+const loadFavorites = async () => {
     try {
       const sessionId = getSessionId();
 
@@ -203,6 +226,8 @@ export default function Home() {
       await trackEvent("favorite_place_saved", category, undefined, place.name);
       await loadFavorites();
 
+      await updateTrending(`${place.id}-${place.latitude}-${place.longitude}`, place.name, category, "save");
+
       alert("Saved to favorites ❤️");
     } catch (error) {
       console.error("Favorite save error:", error);
@@ -236,7 +261,11 @@ export default function Home() {
         place.name
       );
 
-      alert(rating === 1 ? "Thanks 👍" : "Thanks 👎");
+      if (rating === 1) {
+      await updateTrending(`${place.id}-${place.latitude}-${place.longitude}`, place.name, selectedCard?.title || "Unknown", "like");
+    }
+
+    alert(rating === 1 ? "Thanks 👍" : "Thanks 👎");
     } catch (error) {
       console.error("Rating error:", error);
       alert("Could not save rating");
