@@ -80,6 +80,7 @@ export default function Home() {
   const [recentWishes, setRecentWishes] = useState<RecentWish[]>([]);
   const [favorites, setFavorites] = useState<FavoritePlace[]>([]);
   const [recommendations, setRecommendations] = useState<AIRecommendation[]>([]);
+  const [trendingPlaces, setTrendingPlaces] = useState<any[]>([]);
   const [conciergeCategory, setConciergeCategory] = useState<string | null>(null);
   const [showFavorites, setShowFavorites] = useState(false);
   const [showMap, setShowMap] = useState(false);
@@ -663,7 +664,21 @@ const loadFavorites = async () => {
     setTimeout(() => detectIntent(), 50);
   };
 
-  return (
+  
+  useEffect(() => {
+    async function loadTrending() {
+      try {
+        const response = await fetch("/api/trending-list");
+        const data = await response.json();
+        setTrendingPlaces(data.places || []);
+      } catch (e) {
+        console.error("Trending load error:", e);
+      }
+    }
+    loadTrending();
+  }, []);
+
+return (
     <main className="min-h-screen bg-[#0B0F1A] text-white px-5 py-6 max-w-md mx-auto">
       <div className="mb-10">
         <h1 className="text-3xl font-bold tracking-tight">My Wish ✨</h1>
@@ -775,6 +790,23 @@ const loadFavorites = async () => {
               >
                 {wish.wish_text}
               </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+
+      {trendingPlaces.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold mb-3">🔥 Trending Near You</h2>
+          <div className="space-y-2">
+            {trendingPlaces.slice(0,5).map((place:any,index:number)=>(
+              <div key={place.id || index} className="bg-[#151A2D] border border-[#22293D] rounded-xl p-3">
+                <div className="flex justify-between">
+                  <span>{index+1}. {place.place_name}</span>
+                  <span className="text-orange-400">🔥 {place.score}</span>
+                </div>
+              </div>
             ))}
           </div>
         </div>
