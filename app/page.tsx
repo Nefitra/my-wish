@@ -86,6 +86,7 @@ export default function Home() {
   const [showMap, setShowMap] = useState(false);
   const [wishText, setWishText] = useState("");
   const [loading, setLoading] = useState(false);
+  const [topCategories, setTopCategories] = useState<any[]>([]);
   const [nearbyLoading, setNearbyLoading] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [locationReady, setLocationReady] = useState(false);
@@ -812,6 +813,21 @@ return (
         </div>
       )}
 
+
+      {topCategories.length > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold mb-3">🏆 Top Categories</h2>
+          <div className="space-y-2">
+            {topCategories.map((item, index) => (
+              <div key={item.category} className="bg-[#151A2D] border border-[#22293D] rounded-2xl p-3 flex justify-between">
+                <span>{index + 1}. {item.category}</span>
+                <span>{item.count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-4">
         {cards.map((card) => (
           <button
@@ -1180,4 +1196,12 @@ return (
       )}
     </main>
   );
+
+  useEffect(() => {
+    fetch("/api/top-categories")
+      .then((r) => r.json())
+      .then((d) => setTopCategories(d.categories || []))
+      .catch(() => {});
+  }, []);
+
 }
