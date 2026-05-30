@@ -90,6 +90,9 @@ export default function Home() {
   const [locationReady, setLocationReady] = useState(false);
   const [budget, setBudget] = useState("Any");
   const [showBudget, setShowBudget] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [language, setLanguage] = useState("English");
+  const [country, setCountry] = useState("Germany");
 
   const cards: Card[] = [
     { emoji: "🍔", title: "Food", subtitle: "Delivery or restaurant", options: ["🚚 Delivery", "🍽 Restaurant", "🥡 Takeaway"] },
@@ -673,6 +676,37 @@ export default function Home() {
           💶 Budget: {budget}
         </button>
       </div>
+
+      <div className="mb-6">
+        <button
+          onClick={() => setShowProfile(true)}
+          className="w-full rounded-2xl py-4 font-semibold transition bg-[#151A2D] border border-[#22293D] hover:border-violet-500"
+        >
+          👤 Profile
+        </button>
+      </div>
+
+      {showProfile && (
+        <div className="fixed inset-0 bg-black/60 flex items-end justify-center z-50">
+          <div className="w-full max-w-md bg-[#151A2D] rounded-t-3xl p-6">
+            <h2 className="text-2xl font-bold mb-4">👤 Profile</h2>
+            <p className="mb-2">Language</p>
+            <select value={language} onChange={(e)=>setLanguage(e.target.value)} className="w-full bg-[#0B0F1A] p-3 rounded-xl mb-4">
+              <option>English</option>
+              <option>German</option>
+              <option>Russian</option>
+              <option>Italian</option>
+            </select>
+
+            <p className="mb-2">Country</p>
+            <input value={country} onChange={(e)=>setCountry(e.target.value)} className="w-full bg-[#0B0F1A] p-3 rounded-xl mb-4" />
+
+            <button onClick={()=>setShowProfile(false)} className="w-full bg-violet-600 py-3 rounded-xl">
+              Save Profile
+            </button>
+          </div>
+        </div>
+      )}
 
       {recentWishes.length > 0 && (
         <div className="mb-8">
