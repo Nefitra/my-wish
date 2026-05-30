@@ -189,6 +189,35 @@ export default function Home() {
     }
   };
 
+
+
+  const ratePlace = async (place: NearbyPlace, rating: 1 | -1) => {
+    try {
+      await fetch("/api/rate-place", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          place_id: `${place.id}-${place.latitude}-${place.longitude}`,
+          rating,
+        }),
+      });
+
+      await trackEvent(
+        rating === 1 ? "place_liked" : "place_disliked",
+        selectedCard?.title,
+        selectedOption || undefined,
+        place.name
+      );
+
+      alert(rating === 1 ? "Thanks 👍" : "Thanks 👎");
+    } catch (error) {
+      console.error("Rating error:", error);
+      alert("Could not save rating");
+    }
+  };
+
   const saveWish = async (wish: string, category?: string) => {
     try {
       const sessionId = getSessionId();
@@ -921,9 +950,25 @@ export default function Home() {
                                 {place.cuisine ? `${place.type} · ${place.cuisine}` : place.type}
                               </p>
 
+                              <div className="grid grid-cols-2 gap-3 mt-4">
+                                <button
+                                  onClick={() => ratePlace(place, 1)}
+                                  className="bg-[#1E263D] hover:bg-[#2A3555] transition rounded-xl py-3 font-semibold"
+                                >
+                                  👍 Helpful
+                                </button>
+
+                                <button
+                                  onClick={() => ratePlace(place, -1)}
+                                  className="bg-[#1E263D] hover:bg-[#2A3555] transition rounded-xl py-3 font-semibold"
+                                >
+                                  👎 Not Helpful
+                                </button>
+                              </div>
+
                               <button
                                 onClick={() => saveFavoritePlace(place, selectedCard.title)}
-                                className="block mt-4 w-full text-center bg-[#1E263D] hover:bg-[#2A3555] transition rounded-xl py-3 font-semibold"
+                                className="block mt-3 w-full text-center bg-[#1E263D] hover:bg-[#2A3555] transition rounded-xl py-3 font-semibold"
                               >
                                 ❤️ Save
                               </button>
